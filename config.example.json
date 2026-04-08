@@ -1,0 +1,7 @@
+{
+    "piperExe":    "..\\..\\piper\\piper.exe",
+    "piperModel":  "..\\..\\piper\\en_US-ryan-high.onnx",
+    "rate":        0.2,
+    "volume":      100,
+    "pipeName":    "ClaudeTTS"
+}

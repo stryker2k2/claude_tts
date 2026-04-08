@@ -1,0 +1,12 @@
+# Build outputs
+bin/
+obj/
+
+# Piper TTS binary + voice models (large files — run setup.ps1 or download-piper.ps1)
+piper/
+
+# User-specific config (copy from config.example.json)
+config.json
+
+# IDE
+.vscode/
