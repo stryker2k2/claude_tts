@@ -1,4 +1,5 @@
 using System.IO.Pipes;
+using System.Threading.Channels;
 using ClaudeTts;
 
 // ---------------------------------------------------------------------------
@@ -129,8 +130,11 @@ watcher.Created += OnConfigFileEvent;
 watcher.Renamed += (s, e) => OnConfigFileEvent(s, e);
 
 // ---------------------------------------------------------------------------
-// Pipe server loop
+// Speech queue — pipe loop enqueues instantly; consumer speaks one at a time
 // ---------------------------------------------------------------------------
+var speechQueue = Channel.CreateUnbounded<string>(
+    new UnboundedChannelOptions { SingleReader = true });
+
 using var cts = new CancellationTokenSource();
 Console.CancelKeyPress += (_, e) =>
 {
@@ -139,6 +143,33 @@ Console.CancelKeyPress += (_, e) =>
     cts.Cancel();
 };
 
+// Consumer: dequeues and speaks sequentially so responses never overlap
+var consumerTask = Task.Run(async () =>
+{
+    await foreach (var item in speechQueue.Reader.ReadAllAsync(cts.Token))
+    {
+        try
+        {
+            if (item.Equals("[BEEP]", StringComparison.OrdinalIgnoreCase))
+            {
+                System.Media.SystemSounds.Beep.Play();
+                continue;
+            }
+            TtsEngine engineSnapshot;
+            lock (engineLock) { engineSnapshot = currentEngine; }
+            await engineSnapshot.SpeakAsync(item, cts.Token);
+        }
+        catch (OperationCanceledException) { break; }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] Error: {ex.Message}");
+        }
+    }
+});
+
+// ---------------------------------------------------------------------------
+// Pipe server loop — accepts connections immediately, never blocks on speech
+// ---------------------------------------------------------------------------
 while (!cts.Token.IsCancellationRequested)
 {
     string pipeName;
@@ -162,17 +193,7 @@ while (!cts.Token.IsCancellationRequested)
             continue;
 
         Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] {text}");
-
-        // Special commands
-        if (text.Equals("[BEEP]", StringComparison.OrdinalIgnoreCase))
-        {
-            System.Media.SystemSounds.Beep.Play();
-            continue;
-        }
-
-        TtsEngine engineSnapshot;
-        lock (engineLock) { engineSnapshot = currentEngine; }
-        await engineSnapshot.SpeakAsync(text, cts.Token);
+        await speechQueue.Writer.WriteAsync(text, cts.Token);
     }
     catch (OperationCanceledException)
     {
@@ -187,6 +208,9 @@ while (!cts.Token.IsCancellationRequested)
         await server.DisposeAsync();
     }
 }
+
+speechQueue.Writer.Complete();
+await consumerTask;
 
 lock (engineLock) { currentEngine.Dispose(); }
 Console.WriteLine("Server stopped.");

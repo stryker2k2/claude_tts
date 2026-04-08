@@ -118,6 +118,10 @@ public sealed class TtsEngine : IDisposable
             if (proc.ExitCode != 0)
                 throw new InvalidOperationException($"piper.exe exited with code {proc.ExitCode}");
 
+            var wavBytes    = await File.ReadAllBytesAsync(tmpFile, ct);
+            var paddedBytes = PrependSilence(wavBytes, silenceMs: 200);
+            await File.WriteAllBytesAsync(tmpFile, paddedBytes, ct);
+
             using var player = new SoundPlayer(tmpFile);
             player.PlaySync();
         }
@@ -125,6 +129,37 @@ public sealed class TtsEngine : IDisposable
         {
             try { File.Delete(tmpFile); } catch { /* best-effort */ }
         }
+    }
+
+    /// <summary>
+    /// Prepends <paramref name="silenceMs"/> milliseconds of PCM silence to a WAV file's
+    /// audio data. Handles the audio-device cold-start problem where Windows takes
+    /// ~150-200 ms to initialise the endpoint, which otherwise clips the first syllable.
+    /// Assumes a standard 44-byte PCM WAV header (the format Piper always produces).
+    /// </summary>
+    private static byte[] PrependSilence(byte[] wav, int silenceMs)
+    {
+        if (wav.Length < 44) return wav;
+
+        ushort channels      = BitConverter.ToUInt16(wav, 22);
+        uint   sampleRate    = BitConverter.ToUInt32(wav, 24);
+        ushort bitsPerSample = BitConverter.ToUInt16(wav, 34);
+        int    blockAlign    = channels * bitsPerSample / 8;
+
+        int silenceBytes = (int)(sampleRate * silenceMs / 1000) * blockAlign;
+        silenceBytes = (silenceBytes / blockAlign) * blockAlign; // align to block boundary
+
+        uint newDataSize = BitConverter.ToUInt32(wav, 40) + (uint)silenceBytes;
+        uint newRiffSize = (uint)(wav.Length - 8 + silenceBytes);
+
+        var result = new byte[wav.Length + silenceBytes];
+        Array.Copy(wav, result, 44);                                              // copy header
+        BitConverter.GetBytes(newRiffSize).CopyTo(result, 4);                    // patch RIFF size
+        BitConverter.GetBytes(newDataSize).CopyTo(result, 40);                   // patch data size
+        // bytes 44..(44+silenceBytes-1) are already zero — silence
+        Array.Copy(wav, 44, result, 44 + silenceBytes, wav.Length - 44);         // copy audio
+
+        return result;
     }
 
     // -------------------------------------------------------------------------
@@ -254,6 +289,8 @@ public sealed class TtsEngine : IDisposable
 
                 // Backtick — common in Claude code spans, just drop it
                 '`' => "",
+                // Colon — Piper reads it aloud; silence it
+                ':' => "",
                 // Backslash — appears in Windows paths like bin\publish\, read as space
                 '\\' => " ",
                 // Angle brackets — espeak-ng tries to parse these as SSML tags → garbage output
