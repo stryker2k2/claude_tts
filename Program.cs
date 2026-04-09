@@ -60,20 +60,36 @@ void PrintEngineInfo(VoiceConfig cfg, TtsEngine eng)
         Console.WriteLine($"Backend      : Piper TTS");
 }
 
-Console.WriteLine("+===========================================+");
-Console.WriteLine("|          Claude TTS Server               |");
-Console.WriteLine("+===========================================+");
-Console.WriteLine();
-
 var serverConfig = VoiceConfig.Load(serverConfigPath);
 var currentEngine = new TtsEngine(serverConfig);
 var engineLock = new object();
+bool ansi = !Console.IsOutputRedirected;
 
-Console.WriteLine();
-PrintEngineInfo(serverConfig, currentEngine);
-Console.WriteLine();
-Console.WriteLine("Listening for text... (Ctrl+C to stop)");
-Console.WriteLine(new string('-', 44));
+// Prints the full banner + config block, then pins those rows as a fixed header
+// by setting an ANSI scroll region that starts immediately below the separator.
+// Re-calling this (e.g. on config reload) clears the screen and re-establishes the region.
+void PrintHeader(VoiceConfig cfg, TtsEngine eng)
+{
+    if (ansi) Console.Write("\x1b[r"); // reset any existing scroll region before clearing
+    Console.Clear();
+    Console.WriteLine("+===========================================+");
+    Console.WriteLine("|          Claude TTS Server               |");
+    Console.WriteLine("+===========================================+");
+    Console.WriteLine();
+    PrintEngineInfo(cfg, eng);
+    Console.WriteLine();
+    Console.WriteLine("Listening for text... (Ctrl+C to stop, Enter to stop speech)");
+    Console.WriteLine(new string('-', 44));
+    if (ansi)
+    {
+        int logRow = Console.CursorTop;   // first row available for log output (0-based)
+        int height = Math.Max(Console.WindowHeight, logRow + 2);
+        Console.Write($"\x1b[{logRow + 1};{height}r"); // set scroll region (1-based rows)
+        Console.Write($"\x1b[{logRow + 1};1H");         // park cursor at top of scroll region
+    }
+}
+
+PrintHeader(serverConfig, currentEngine);
 
 // ---------------------------------------------------------------------------
 // File watcher -- reloads config.json on change without restarting
@@ -107,10 +123,8 @@ void OnConfigFileEvent(object _, FileSystemEventArgs e)
                 serverConfig  = newConfig;
             }
             oldEngine.Dispose();
-            Console.WriteLine();
-            Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] config.json reloaded:");
-            PrintEngineInfo(newConfig, newEngine);
-            Console.WriteLine(new string('-', 44));
+            PrintHeader(newConfig, newEngine);
+            Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] Config reloaded.");
         }
         catch (Exception ex)
         {
@@ -139,31 +153,84 @@ using var cts = new CancellationTokenSource();
 Console.CancelKeyPress += (_, e) =>
 {
     e.Cancel = true;
-    Console.WriteLine("\nShutting down...");
+    if (ansi) Console.Write("\x1b[r"); // restore full-screen scrolling before shutdown output
+    Console.Clear();
+    Console.WriteLine("Shutting down...");
     cts.Cancel();
 };
+
+// Separate token for stopping the current utterance without shutting down the server.
+// Swapped out each time Enter is pressed.
+var stopSpeechLock = new object();
+var stopSpeechCts  = new CancellationTokenSource();
 
 // Consumer: dequeues and speaks sequentially so responses never overlap
 var consumerTask = Task.Run(async () =>
 {
-    await foreach (var item in speechQueue.Reader.ReadAllAsync(cts.Token))
+    try
+    {
+        await foreach (var item in speechQueue.Reader.ReadAllAsync(cts.Token))
+        {
+            try
+            {
+                if (item.Equals("[BEEP]", StringComparison.OrdinalIgnoreCase))
+                {
+                    System.Media.SystemSounds.Beep.Play();
+                    continue;
+                }
+                TtsEngine engineSnapshot;
+                lock (engineLock) { engineSnapshot = currentEngine; }
+
+                // Combine global shutdown token with the per-utterance stop token
+                CancellationToken stopToken;
+                lock (stopSpeechLock) { stopToken = stopSpeechCts.Token; }
+                using var linked = CancellationTokenSource.CreateLinkedTokenSource(cts.Token, stopToken);
+
+                await engineSnapshot.SpeakAsync(item, linked.Token);
+            }
+            catch (OperationCanceledException) when (cts.IsCancellationRequested) { break; }
+            catch (OperationCanceledException) { /* Enter pressed — speech stopped, keep running */ }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] Error: {ex.Message}");
+            }
+        }
+    }
+    catch (OperationCanceledException) { /* cts cancelled while awaiting next queue item — clean exit */ }
+});
+
+// Keyboard listener: pressing Enter stops the current utterance and clears the queue
+var keyboardTask = Task.Run(async () =>
+{
+    while (!cts.IsCancellationRequested)
     {
         try
         {
-            if (item.Equals("[BEEP]", StringComparison.OrdinalIgnoreCase))
+            if (Console.KeyAvailable)
             {
-                System.Media.SystemSounds.Beep.Play();
-                continue;
+                var key = Console.ReadKey(intercept: true);
+                if (key.Key == ConsoleKey.Enter)
+                {
+                    CancellationTokenSource oldCts;
+                    lock (stopSpeechLock)
+                    {
+                        oldCts       = stopSpeechCts;
+                        stopSpeechCts = new CancellationTokenSource();
+                    }
+                    oldCts.Cancel();
+                    oldCts.Dispose();
+                    // Drain any queued utterances
+                    while (speechQueue.Reader.TryRead(out _)) { }
+                    Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] Speech stopped.");
+                }
             }
-            TtsEngine engineSnapshot;
-            lock (engineLock) { engineSnapshot = currentEngine; }
-            await engineSnapshot.SpeakAsync(item, cts.Token);
+            else
+            {
+                await Task.Delay(50, cts.Token);
+            }
         }
         catch (OperationCanceledException) { break; }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] Error: {ex.Message}");
-        }
+        catch (InvalidOperationException) { break; } // Console input redirected — skip keyboard handling
     }
 });
 
@@ -210,7 +277,8 @@ while (!cts.Token.IsCancellationRequested)
 }
 
 speechQueue.Writer.Complete();
-await consumerTask;
+await Task.WhenAll(consumerTask, keyboardTask);
 
+lock (stopSpeechLock) { stopSpeechCts.Dispose(); }
 lock (engineLock) { currentEngine.Dispose(); }
 Console.WriteLine("Server stopped.");

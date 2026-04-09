@@ -33,13 +33,23 @@ public sealed class TtsEngine : IDisposable
     {
         _synth = new SpeechSynthesizer();
 
-        // Resolve paths relative to the config file's directory
-        var baseDir = Path.GetDirectoryName(
-            Path.Combine(AppContext.BaseDirectory, "config.json"))!;
+        // Resolve paths by walking up from the exe directory until the file is found.
+        // This works regardless of how deep the build output directory is.
+        var baseDir = AppContext.BaseDirectory;
 
-        string ResolvePath(string? p) =>
-            string.IsNullOrWhiteSpace(p) ? "" :
-            Path.IsPathRooted(p) ? p : Path.GetFullPath(Path.Combine(baseDir, p));
+        string ResolvePath(string? p)
+        {
+            if (string.IsNullOrWhiteSpace(p)) return "";
+            if (Path.IsPathRooted(p)) return p;
+            var dir = new DirectoryInfo(baseDir);
+            while (dir != null)
+            {
+                var candidate = Path.GetFullPath(Path.Combine(dir.FullName, p));
+                if (File.Exists(candidate)) return candidate;
+                dir = dir.Parent;
+            }
+            return "";
+        }
 
         var piperExe   = ResolvePath(config.PiperExe);
         var piperModel = ResolvePath(config.PiperModel);
@@ -111,9 +121,21 @@ public sealed class TtsEngine : IDisposable
             await proc.StandardInput.WriteAsync(text);
             proc.StandardInput.Close();
 
-            var stderrTask = proc.StandardError.ReadToEndAsync(ct);
-            await proc.WaitForExitAsync(ct);
-            await stderrTask;
+            var stderrTask = proc.StandardError.ReadToEndAsync(CancellationToken.None);
+            try
+            {
+                await proc.WaitForExitAsync(ct);
+            }
+            catch (OperationCanceledException)
+            {
+                try { proc.Kill(); } catch { }
+                throw;
+            }
+            finally
+            {
+                // Always drain stderr so the pipe doesn't block
+                try { await stderrTask.WaitAsync(TimeSpan.FromSeconds(2)); } catch { }
+            }
 
             if (proc.ExitCode != 0)
                 throw new InvalidOperationException($"piper.exe exited with code {proc.ExitCode}");
@@ -123,7 +145,10 @@ public sealed class TtsEngine : IDisposable
             await File.WriteAllBytesAsync(tmpFile, paddedBytes, ct);
 
             using var player = new SoundPlayer(tmpFile);
-            player.PlaySync();
+            var playTask = Task.Run(() => player.PlaySync(), CancellationToken.None);
+            using var reg = ct.Register(() => { try { player.Stop(); } catch { } });
+            await playTask;
+            ct.ThrowIfCancellationRequested();
         }
         finally
         {
@@ -180,7 +205,10 @@ public sealed class TtsEngine : IDisposable
         {
             await File.WriteAllBytesAsync(tmpFile, bytes, ct);
             using var player = new SoundPlayer(tmpFile);
-            player.PlaySync();
+            var playTask = Task.Run(() => player.PlaySync(), CancellationToken.None);
+            using var reg = ct.Register(() => { try { player.Stop(); } catch { } });
+            await playTask;
+            ct.ThrowIfCancellationRequested();
         }
         finally
         {

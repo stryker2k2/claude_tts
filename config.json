@@ -2,6 +2,6 @@
     "rate":  0.2,
     "volume":  100,
     "pipeName":  "ClaudeTTS",
-    "piperExe":  "..\\..\\piper\\piper.exe",
-    "piperModel":  "..\\..\\piper\\en_GB-cori-high.onnx"
+    "piperExe":   "piper\\piper.exe",
+    "piperModel": "piper\\en_GB-cori-high.onnx"
 }
