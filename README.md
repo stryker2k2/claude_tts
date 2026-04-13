@@ -114,10 +114,10 @@ To use a different voice:
 
 ```powershell
 # Copies exe to ~/.claude/tts/ and updates tts-hook.ps1 automatically
-.\install.ps1
+.\publish.ps1
 
 # Add -AutoStart to also create a Windows Startup shortcut:
-.\install.ps1 -AutoStart
+.\publish.ps1 -AutoStart
 ```
 
 > **Important for future developers:** Three PowerShell hook scripts and a
@@ -402,7 +402,7 @@ try {
 # Minimized / background
 Start-Process ".\bin\publish\claude_tts.exe" -WindowStyle Minimized
 
-# If installed via install.ps1
+# If installed via publish.ps1
 Start-Process "$env:USERPROFILE\.claude\tts\claude_tts.exe" -WindowStyle Minimized
 ```
 
@@ -418,7 +418,7 @@ Start-Process "$env:USERPROFILE\.claude\tts\claude_tts.exe" -WindowStyle Minimiz
 
 ### Auto-start with Windows
 
-Run `.\install.ps1 -AutoStart` **or** manually:
+Run `.\publish.ps1 -AutoStart` **or** manually:
 
 1. Press `Win + R`, type `shell:startup`, press Enter
 2. Create a shortcut to the exe
@@ -522,7 +522,7 @@ claude_tts/
 ├── config.json           Runtime settings template (copied next to exe on build)
 ├── build.ps1             Build / publish helper
 ├── download-piper.ps1    Downloads Piper binary + voice model
-├── install.ps1           Build + install to ~/.claude/tts/ + optional auto-start
+├── publish.ps1           Build + install to ~/.claude/tts/ + optional auto-start
 ├── start-server.ps1      Convenience script to launch the server
 └── .vscode/
     ├── launch.json       Debug configurations

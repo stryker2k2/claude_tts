@@ -59,5 +59,5 @@ Write-Host "To start the TTS server:" -ForegroundColor Cyan
 Write-Host "    .\bin\publish\claude_tts.exe"
 Write-Host ""
 Write-Host "To install and add to Windows startup:"
-Write-Host "    .\install.ps1 -AutoStart"
+Write-Host "    .\publish.ps1 -AutoStart"
 Write-Host ""

@@ -64,4 +64,4 @@ Write-Host ""
 Write-Host "Next steps:"
 Write-Host "  Test voices : $outputDir\claude_tts.exe --list"
 Write-Host '  Test speech : claude_tts.exe --speak "Hello world"'
-Write-Host "  Install     : .\install.ps1"
+Write-Host "  Install     : .\publish.ps1"
