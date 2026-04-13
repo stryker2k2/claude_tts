@@ -63,14 +63,8 @@ void PrintEngineInfo(VoiceConfig cfg, TtsEngine eng)
 var serverConfig = VoiceConfig.Load(serverConfigPath);
 var currentEngine = new TtsEngine(serverConfig);
 var engineLock = new object();
-bool ansi = !Console.IsOutputRedirected;
-
-// Prints the full banner + config block, then pins those rows as a fixed header
-// by setting an ANSI scroll region that starts immediately below the separator.
-// Re-calling this (e.g. on config reload) clears the screen and re-establishes the region.
 void PrintHeader(VoiceConfig cfg, TtsEngine eng)
 {
-    if (ansi) Console.Write("\x1b[r"); // reset any existing scroll region before clearing
     Console.Clear();
     Console.WriteLine("+===========================================+");
     Console.WriteLine("|          Claude TTS Server               |");
@@ -80,13 +74,6 @@ void PrintHeader(VoiceConfig cfg, TtsEngine eng)
     Console.WriteLine();
     Console.WriteLine("Listening for text... (Ctrl+C to stop, Enter to stop speech)");
     Console.WriteLine(new string('-', 44));
-    if (ansi)
-    {
-        int logRow = Console.CursorTop;   // first row available for log output (0-based)
-        int height = Math.Max(Console.WindowHeight, logRow + 2);
-        Console.Write($"\x1b[{logRow + 1};{height}r"); // set scroll region (1-based rows)
-        Console.Write($"\x1b[{logRow + 1};1H");         // park cursor at top of scroll region
-    }
 }
 
 PrintHeader(serverConfig, currentEngine);
@@ -153,8 +140,6 @@ using var cts = new CancellationTokenSource();
 Console.CancelKeyPress += (_, e) =>
 {
     e.Cancel = true;
-    if (ansi) Console.Write("\x1b[r"); // restore full-screen scrolling before shutdown output
-    Console.Clear();
     Console.WriteLine("Shutting down...");
     cts.Cancel();
 };
