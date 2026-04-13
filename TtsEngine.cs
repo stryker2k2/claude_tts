@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Media;
+using NAudio.Wave;
 using Windows.Media.SpeechSynthesis;
 using Windows.Storage.Streams;
 
@@ -144,11 +145,7 @@ public sealed class TtsEngine : IDisposable
             var paddedBytes = PrependSilence(wavBytes, silenceMs: 200);
             await File.WriteAllBytesAsync(tmpFile, paddedBytes, ct);
 
-            using var player = new SoundPlayer(tmpFile);
-            var playTask = Task.Run(() => player.PlaySync(), CancellationToken.None);
-            using var reg = ct.Register(() => { try { player.Stop(); } catch { } });
-            await playTask;
-            ct.ThrowIfCancellationRequested();
+            await PlayWavAsync(tmpFile, ct);
         }
         finally
         {
@@ -204,11 +201,7 @@ public sealed class TtsEngine : IDisposable
         try
         {
             await File.WriteAllBytesAsync(tmpFile, bytes, ct);
-            using var player = new SoundPlayer(tmpFile);
-            var playTask = Task.Run(() => player.PlaySync(), CancellationToken.None);
-            using var reg = ct.Register(() => { try { player.Stop(); } catch { } });
-            await playTask;
-            ct.ThrowIfCancellationRequested();
+            await PlayWavAsync(tmpFile, ct);
         }
         finally
         {
@@ -347,6 +340,29 @@ public sealed class TtsEngine : IDisposable
             result += ".";
 
         return result;
+    }
+
+    /// <summary>
+    /// Plays a WAV file via NAudio and returns as soon as playback finishes or
+    /// <paramref name="ct"/> is cancelled. Cancellation stops audio immediately.
+    /// </summary>
+    private static async Task PlayWavAsync(string path, CancellationToken ct)
+    {
+        using var reader = new AudioFileReader(path);
+        using var output = new WaveOutEvent();
+        output.Init(reader);
+
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        output.PlaybackStopped += (_, args) =>
+        {
+            if (args.Exception != null) tcs.TrySetException(args.Exception);
+            else                        tcs.TrySetResult();
+        };
+
+        output.Play();
+        using var reg = ct.Register(() => output.Stop());
+        await tcs.Task;
+        ct.ThrowIfCancellationRequested();
     }
 
     public void Dispose() => _synth.Dispose();

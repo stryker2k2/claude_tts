@@ -15,8 +15,10 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- SoundPlayer lives here in .NET 5+ -->
+    <!-- SystemSounds.Beep lives here in .NET 5+ -->
     <PackageReference Include="System.Windows.Extensions" Version="*" />
+    <!-- Immediate audio stop on cancellation (SoundPlayer can't do this) -->
+    <PackageReference Include="NAudio" Version="*" />
   </ItemGroup>
 
   <ItemGroup>
