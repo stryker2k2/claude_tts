@@ -261,6 +261,11 @@ public sealed class TtsEngine : IDisposable
         text = System.Text.RegularExpressions.Regex.Replace(text, @"(\w)\.(\w)", "$1 $2");       // dots inside identifiers (System.Speech, config.json) → space
         text = System.Text.RegularExpressions.Regex.Replace(text, @"\r?\n", ", , ");             // newlines → double comma pause (period is swallowed when followed by lowercase)
 
+        // Tech terms espeak-ng mispronounces or stumbles on
+        text = System.Text.RegularExpressions.Regex.Replace(text, @"\bC#", "C sharp");
+        text = System.Text.RegularExpressions.Regex.Replace(text, @"\.NET\b", "dot NET",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
         var sb = new System.Text.StringBuilder(text.Length);
         foreach (char c in text)
         {
@@ -315,6 +320,10 @@ public sealed class TtsEngine : IDisposable
                 // Zero-width / invisible
                 '\u00AD' or '\u200B' or '\u200C' or '\u200D' or '\uFEFF' => "",
 
+                // Exclamation mark — causes a hard prosody break in Piper/espeak-ng at sentence
+                // boundaries (e.g. "Kotlin! It's"), which sounds like a stumble. A period gives
+                // the same sentence-ending pause with clean intonation.
+                '!' => ".",
                 // Backtick — common in Claude code spans, just drop it
                 '`' => "",
                 // Colon — Piper reads it aloud; silence it

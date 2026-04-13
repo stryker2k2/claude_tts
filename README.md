@@ -15,8 +15,12 @@ cd claude_tts
 # Downloads Piper + Ryan voice, builds the project, creates config.json
 .\setup.ps1
 
-# Start the server
-.\bin\publish\claude_tts.exe
+# Option A — install to ~/.claude/tts/ and launch from Start Menu:
+.\install.ps1
+# Then: Start Menu > Claude TTS > Claude TTS Server
+
+# Option B — run directly (development):
+dotnet run
 ```
 
 Then follow the [Claude Code Hook Scripts](#claude-code-hook-scripts) section to
@@ -65,59 +69,35 @@ code "C:\Users\stryk\OneDrive\Documents\repo\claude_tts"
 
 Install the recommended extensions when VS Code prompts (C# Dev Kit).
 
-### 2. Build
+### 2. Setup (first time only)
 
-**Option A — PowerShell script (recommended):**
-```powershell
-.\build.ps1
-```
-Output lands in `bin\publish\claude_tts.exe`.
-
-**Option B — dotnet CLI directly:**
-```powershell
-dotnet publish claude_tts.csproj `
-    --configuration Release `
-    --runtime win-x64 `
-    --self-contained false `
-    --output bin\publish
-```
-
-**Option C — self-contained** (no .NET runtime required on target machine):
-```powershell
-.\build.ps1 -SelfContained
-```
-
-**Option D — VS Code task:**
-Press `Ctrl+Shift+B` → select **publish (Release)**.
-
-### 3. Download Piper TTS
-
-After building, run the downloader once:
+Downloads Piper + Ryan voice, builds the project, and creates `config.json`:
 
 ```powershell
-.\download-piper.ps1
+.\setup.ps1
 ```
-
-This fetches the latest Piper Windows binary from GitHub and the `en_US-ryan-high`
-voice model from Hugging Face, placing them in `bin\publish\piper\`. It also
-updates `bin\publish\config.json` automatically.
 
 To use a different voice:
-
 ```powershell
-.\download-piper.ps1 -Voice en_US-joe-medium
+.\setup.ps1 -Voice en_US-joe-medium
 # Other options: en_US-amy-low, en_GB-cori-high, en_US-hfc_male-medium
 # Full list: https://rhasspy.github.io/piper-samples/
 ```
 
-### 4. Install & configure hooks
+### 3. Install & run
 
+**Option A — Install to `~/.claude/tts/` and launch from Start Menu (recommended):**
 ```powershell
-# Copies exe to ~/.claude/tts/ and updates tts-hook.ps1 automatically
-.\publish.ps1
+.\install.ps1
 
 # Add -AutoStart to also create a Windows Startup shortcut:
-.\publish.ps1 -AutoStart
+.\install.ps1 -AutoStart
+```
+Then launch via **Start Menu > Claude TTS > Claude TTS Server**.
+
+**Option B — Run directly (development):**
+```powershell
+dotnet run
 ```
 
 > **Important for future developers:** Three PowerShell hook scripts and a
@@ -395,15 +375,11 @@ try {
 
 ### Start the server
 
+**Installed (recommended):** Start Menu > Claude TTS > Claude TTS Server
+
+**Development:**
 ```powershell
-# From the build output (development)
-.\bin\publish\claude_tts.exe
-
-# Minimized / background
-Start-Process ".\bin\publish\claude_tts.exe" -WindowStyle Minimized
-
-# If installed via publish.ps1
-Start-Process "$env:USERPROFILE\.claude\tts\claude_tts.exe" -WindowStyle Minimized
+dotnet run
 ```
 
 ### CLI flags
@@ -418,11 +394,13 @@ Start-Process "$env:USERPROFILE\.claude\tts\claude_tts.exe" -WindowStyle Minimiz
 
 ### Auto-start with Windows
 
-Run `.\publish.ps1 -AutoStart` **or** manually:
+```powershell
+.\install.ps1 -AutoStart
+```
 
-1. Press `Win + R`, type `shell:startup`, press Enter
-2. Create a shortcut to the exe
-3. Right-click the shortcut → Properties → Run: **Minimized**
+This creates a shortcut in your Windows Startup folder so the server launches
+minimized at login. Re-run without `-AutoStart` to install an update without
+changing the Startup shortcut.
 
 ---
 
@@ -520,10 +498,8 @@ claude_tts/
 ├── claude_tts.csproj     .NET 10 Windows project file
 ├── app.manifest          Declares Windows 10/11 compatibility
 ├── config.json           Runtime settings template (copied next to exe on build)
-├── build.ps1             Build / publish helper
-├── download-piper.ps1    Downloads Piper binary + voice model
-├── publish.ps1           Build + install to ~/.claude/tts/ + optional auto-start
-├── start-server.ps1      Convenience script to launch the server
+├── setup.ps1             First-time setup: download Piper + build
+├── install.ps1           Build + install to ~/.claude/tts/ + Start Menu shortcut
 └── .vscode/
     ├── launch.json       Debug configurations
     ├── tasks.json        Build tasks
