@@ -26,13 +26,13 @@ $projectDir = $PSScriptRoot
 
 # 1. Build
 Write-Host ""
-Write-Host "Step 1/3 — Building..." -ForegroundColor Cyan
+Write-Host "Step 1/4 - Building..." -ForegroundColor Cyan
 & "$projectDir\build.ps1" -Configuration Release
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 # 2. Install
 Write-Host ""
-Write-Host "Step 2/3 — Installing to $InstallDir..." -ForegroundColor Cyan
+Write-Host "Step 2/4 - Installing to $InstallDir..." -ForegroundColor Cyan
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 $publishDir = Join-Path $projectDir "bin\publish"
 Copy-Item "$publishDir\*" -Destination $InstallDir -Recurse -Force
@@ -40,9 +40,9 @@ Write-Host "Files copied." -ForegroundColor Green
 
 # 3. Start Menu shortcut (always created/updated)
 Write-Host ""
-Write-Host "Step 3/4 — Creating Start Menu shortcut..." -ForegroundColor Cyan
-$exePath       = Join-Path $InstallDir "claude_tts.exe"
-$startMenuDir  = Join-Path ([Environment]::GetFolderPath("Programs")) "Claude TTS"
+Write-Host "Step 3/4 - Creating Start Menu shortcut..." -ForegroundColor Cyan
+$exePath      = Join-Path $InstallDir "claude_tts.exe"
+$startMenuDir = Join-Path ([Environment]::GetFolderPath("Programs")) "Claude TTS"
 New-Item -ItemType Directory -Force -Path $startMenuDir | Out-Null
 $startMenuPath = Join-Path $startMenuDir "Claude TTS Server.lnk"
 
@@ -50,7 +50,7 @@ $shell    = New-Object -ComObject WScript.Shell
 $shortcut = $shell.CreateShortcut($startMenuPath)
 $shortcut.TargetPath       = $exePath
 $shortcut.WorkingDirectory = $InstallDir
-$shortcut.WindowStyle      = 1  # normal window
+$shortcut.WindowStyle      = 1
 $shortcut.Description      = "Claude TTS named-pipe server"
 $shortcut.Save()
 
@@ -59,34 +59,30 @@ Write-Host "Start Menu shortcut updated: $startMenuPath" -ForegroundColor Green
 # 4. Optional: Windows Startup shortcut
 if ($AutoStart) {
     Write-Host ""
-    Write-Host "Step 4/4 — Creating Startup shortcut..." -ForegroundColor Cyan
+    Write-Host "Step 4/4 - Creating Startup shortcut..." -ForegroundColor Cyan
     $startupFolder = [Environment]::GetFolderPath("Startup")
-    $shortcutPath  = Join-Path $startupFolder "Claude TTS Server.lnk"
+    $startupPath   = Join-Path $startupFolder "Claude TTS Server.lnk"
 
-    $shortcut = $shell.CreateShortcut($shortcutPath)
+    $shortcut = $shell.CreateShortcut($startupPath)
     $shortcut.TargetPath       = $exePath
     $shortcut.WorkingDirectory = $InstallDir
-    $shortcut.WindowStyle      = 7  # minimized
+    $shortcut.WindowStyle      = 7
     $shortcut.Description      = "Claude TTS named-pipe server"
     $shortcut.Save()
 
-    Write-Host "Startup shortcut created: $shortcutPath" -ForegroundColor Green
+    Write-Host "Startup shortcut created: $startupPath" -ForegroundColor Green
 } else {
     Write-Host ""
-    Write-Host "Step 4/4 — Skipped auto-start (re-run with -AutoStart to enable)." -ForegroundColor DarkGray
+    Write-Host "Step 4/4 - Skipped auto-start (re-run with -AutoStart to enable)." -ForegroundColor DarkGray
 }
 
 # Done
 $exeFinal = Join-Path $InstallDir "claude_tts.exe"
 Write-Host ""
-Write-Host "Installation complete!" -ForegroundColor Green
+Write-Host "Done! Installed to: $InstallDir" -ForegroundColor Green
 Write-Host ""
-Write-Host "Start the server now:"
+Write-Host "Start the server:"
 Write-Host "  $exeFinal"
 Write-Host ""
-Write-Host "Or start minimized in a new window:"
+Write-Host "Or minimized:"
 Write-Host "  Start-Process '$exeFinal' -WindowStyle Minimized"
-Write-Host ""
-Write-Host "The tts-hook.ps1 in ~/.claude/ already uses the pipe with System.Speech fallback."
-Write-Host "When the server is running, responses are spoken via Natural HD voices."
-Write-Host "When stopped, it falls back to System.Speech (David Desktop)."
